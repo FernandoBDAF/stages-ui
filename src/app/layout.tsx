@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { ConnectionBanner } from "@/components/layout/connection-banner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,6 +32,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background antialiased`}
       >
         <Providers>
+          <ConnectionBanner />
           <div className="flex min-h-screen flex-col">
             <Header />
             <main className="flex-1 container py-6">{children}</main>

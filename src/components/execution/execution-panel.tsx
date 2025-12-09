@@ -8,7 +8,8 @@ import { usePipelineStore } from '@/lib/store/pipeline-store';
 import { useConfigStore } from '@/lib/store/config-store';
 import { useExecutionStore } from '@/lib/store/execution-store';
 import { usePipelineExecution } from '@/hooks/use-pipeline-execution';
-import { Play, CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { Play, CheckCircle, Loader2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function ExecutionPanel() {
   const { selectedPipeline, selectedStages } = usePipelineStore();
@@ -19,6 +20,7 @@ export function ExecutionPanel() {
     executionLoading,
     currentPipelineId,
     pipelineStatus,
+    clearStatus,
   } = useExecutionStore();
 
   const { validate, execute, cancel } = usePipelineExecution();
@@ -72,7 +74,27 @@ export function ExecutionPanel() {
 
         {validationResult && <ValidationResults result={validationResult} />}
 
-        {currentPipelineId && pipelineStatus && (
+        {/* Show error only if status is 'error' - not for transient errors during startup */}
+        {pipelineStatus?.status === 'error' && pipelineStatus?.error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Execution Error</AlertTitle>
+            <AlertDescription className="flex items-center justify-between">
+              <span>{pipelineStatus.error}</span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => clearStatus()}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Show status monitor for running, completed, etc - not for error state */}
+        {currentPipelineId && pipelineStatus && pipelineStatus.status !== 'error' && (
           <StatusMonitor
             pipelineId={currentPipelineId}
             status={pipelineStatus}

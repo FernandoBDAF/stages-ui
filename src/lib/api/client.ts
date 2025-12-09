@@ -1,3 +1,5 @@
+import { withRetry, isRetryableError } from '@/lib/utils/retry';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 export class ApiError extends Error {
@@ -7,31 +9,50 @@ export class ApiError extends Error {
   }
 }
 
+interface FetchOptions extends RequestInit {
+  retry?: boolean;
+}
+
 async function fetchApi<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: FetchOptions
 ): Promise<T> {
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+  const { retry = true, ...fetchOptions } = options || {};
 
-  if (!response.ok) {
-    throw new ApiError(response.status, `API Error: ${response.statusText}`);
+  const doFetch = async () => {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      ...fetchOptions,
+      headers: {
+        'Content-Type': 'application/json',
+        ...fetchOptions?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `API Error: ${response.statusText}`);
+    }
+
+    return response.json();
+  };
+
+  if (retry) {
+    return withRetry(doFetch, {
+      maxRetries: 3,
+      shouldRetry: isRetryableError,
+    });
   }
 
-  return response.json();
+  return doFetch();
 }
 
 export const api = {
-  get: <T>(endpoint: string) => fetchApi<T>(endpoint),
-  post: <T>(endpoint: string, data: unknown) =>
+  get: <T>(endpoint: string, options?: { retry?: boolean }) =>
+    fetchApi<T>(endpoint, options),
+  post: <T>(endpoint: string, data: unknown, options?: { retry?: boolean }) =>
     fetchApi<T>(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
+      ...options,
     }),
 };
 

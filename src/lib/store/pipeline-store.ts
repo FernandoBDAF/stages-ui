@@ -39,7 +39,7 @@ export const usePipelineStore = create<PipelineState>()(
       },
 
       toggleStage: (stageName) => {
-        const { selectedStages, stages } = get();
+        const { selectedStages, stages, pipelines, selectedPipeline } = get();
         const isSelected = selectedStages.includes(stageName);
         
         if (isSelected) {
@@ -53,7 +53,13 @@ export const usePipelineStore = create<PipelineState>()(
             stage.dependencies.forEach((dep) => newStages.add(dep));
           }
           
-          set({ selectedStages: Array.from(newStages) });
+          // Sort stages according to pipeline's defined order
+          const pipelineStageOrder = selectedPipeline 
+            ? pipelines[selectedPipeline]?.stages || []
+            : [];
+          const sortedStages = pipelineStageOrder.filter((s: string) => newStages.has(s));
+          
+          set({ selectedStages: sortedStages });
         }
       },
 

@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ValidationResult, ExecutionResult, PipelineStatus } from '@/types/api';
+import type { ValidationResult, ExecutionResult, PipelineStatus, PipelineHistoryResponse } from '@/types/api';
 
 export const pipelinesApi = {
   validate: (
@@ -31,5 +31,8 @@ export const pipelinesApi = {
 
   cancel: (pipelineId: string) =>
     api.post<{ success: boolean }>(`/pipelines/${pipelineId}/cancel`, {}),
+
+  getHistory: (limit: number = 10) =>
+    api.get<PipelineHistoryResponse>(`/pipelines/history?limit=${limit}`),
 };
 

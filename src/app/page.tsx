@@ -6,6 +6,7 @@ import { PipelineSelector } from '@/components/pipeline/pipeline-selector';
 import { StageSelector } from '@/components/pipeline/stage-selector';
 import { StageConfigPanel } from '@/components/config/stage-config-panel';
 import { ExecutionPanel } from '@/components/execution/execution-panel';
+import { ExecutionHistory } from '@/components/execution/execution-history';
 import { usePipelineStore } from '@/lib/store/pipeline-store';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -105,6 +106,8 @@ export default function HomePage() {
       {selectedPipeline && selectedStages.length > 0 && (
         <ExecutionPanel />
       )}
+
+      <ExecutionHistory />
     </div>
   );
 }

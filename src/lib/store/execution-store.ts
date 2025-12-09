@@ -23,6 +23,7 @@ interface ExecutionState {
   setExecutionLoading: (loading: boolean) => void;
   addError: (error: string) => void;
   clearErrors: () => void;
+  clearStatus: () => void;
   reset: () => void;
 }
 
@@ -43,6 +44,12 @@ export const useExecutionStore = create<ExecutionState>()(
       setExecutionLoading: (loading) => set({ executionLoading: loading }),
       addError: (error) => set((state) => ({ errors: [...state.errors, error] })),
       clearErrors: () => set({ errors: [] }),
+      clearStatus: () => set({
+        currentPipelineId: null,
+        pipelineStatus: null,
+        validationResult: null,
+        errors: [],
+      }),
       reset: () =>
         set({
           validationResult: null,
