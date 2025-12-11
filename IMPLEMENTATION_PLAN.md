@@ -1805,7 +1805,7 @@ export default function HomePage() {
 
 #### Phase 3: Core Components
 - [ ] Pipeline Selector component
-- [ ] Stage Selector component  
+- [ ] Stage Selector component
 - [ ] Stage Config Panel component
 - [ ] Category Section component *(gap identified - needs implementation)*
 - [ ] Config Field component

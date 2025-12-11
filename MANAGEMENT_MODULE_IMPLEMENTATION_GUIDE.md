@@ -47,8 +47,9 @@ NEXT_PUBLIC_GRAPH_API_URL=http://localhost:8081
 | `src/components/management/observability-panel.tsx` | Health & dashboards |
 | `src/components/management/maintenance-panel.tsx` | Maintenance utilities |
 | `src/components/management/analytics-panel.tsx` | Graph statistics |
-| `src/lib/api/management.ts` | API client functions |
 | `src/types/management.ts` | Type definitions |
+| `src/lib/api/management.ts` | API client functions |
+| `src/lib/query-keys.ts` | Centralized React Query keys |
 | `src/hooks/use-management.ts` | React Query hooks |
 | `src/lib/store/management-store.ts` | Zustand store |
 
@@ -66,7 +67,7 @@ First, create a separate client component for navigation links:
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils/cn';
 
 interface NavLinkProps {
   href: string;
@@ -170,7 +171,7 @@ import { MaintenancePanel } from '@/components/management/maintenance-panel'
 import { AnalyticsPanel } from '@/components/management/analytics-panel'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { ChevronDown } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import { useState } from 'react'
 
 export default function ManagementPage() {
@@ -214,260 +215,282 @@ export default function ManagementPage() {
 
 ## Phase 2: API Client (1 hour)
 
-### 2.1 Create Management API Client
+### 2.1 Create Management Types
+
+Create `src/types/management.ts`:
+
+```typescript
+// src/types/management.ts
+
+export interface DatabaseInfo {
+  name: string;
+  collections: Array<{
+    name: string;
+    count: number;
+  }>;
+}
+
+export interface InspectDatabasesResponse {
+  databases: DatabaseInfo[];
+  timestamp: string;
+}
+
+export interface OperationProgress {
+  processed: number;
+  total: number;
+  percent: number;
+}
+
+export interface OperationStatus {
+  operation_id: string;
+  type: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: OperationProgress;
+  started_at: string;
+  completed_at?: string;
+  error?: string;
+  params: Record<string, unknown>;
+}
+
+export interface CopyCollectionParams {
+  source_db: string;
+  target_db: string;
+  collection: string;
+  max_documents?: number | null;
+  clear_target?: boolean;
+}
+
+export interface CopyCollectionResponse {
+  operation_id: string;
+  status: string;
+  documents_copied?: number;
+  message?: string;
+}
+
+export interface CleanGraphRAGParams {
+  db_name: string;
+  drop_collections?: string[];
+  clear_chunk_metadata?: boolean;
+}
+
+export interface CleanGraphRAGResponse {
+  db_name: string;
+  dropped_collections: Array<{
+    name: string;
+    documents_deleted: number;
+  }>;
+  chunks_updated: number;
+  success: boolean;
+  timestamp: string;
+}
+
+export interface CleanStageStatusParams {
+  db_name: string;
+  stages: string[];
+}
+
+export interface CleanStageStatusResponse {
+  db_name: string;
+  stages_cleaned: string[];
+  chunks_modified: number;
+  success: boolean;
+  timestamp: string;
+}
+
+export interface SetupTestDBParams {
+  source_db: string;
+  target_db: string;
+  chunk_count?: number;
+  diversity_mode?: boolean;
+}
+
+export interface SetupTestDBResponse {
+  source_db: string;
+  target_db: string;
+  chunks_selected: number;
+  unique_videos: number;
+  diversity_mode: boolean;
+  success: boolean;
+  timestamp: string;
+}
+
+export interface RebuildIndexesParams {
+  db_name: string;
+  collections?: string[];
+}
+
+export interface RebuildIndexesResponse {
+  db_name: string;
+  collections_indexed: Array<{
+    name: string;
+    indexes_created: string[];
+  }>;
+  success: boolean;
+  timestamp: string;
+}
+
+export interface HealthStatus {
+  overall: 'healthy' | 'degraded' | 'down' | 'unknown';
+  services: {
+    prometheus: { status: string; url: string; error?: string };
+    grafana: { status: string; url: string; error?: string };
+    loki: { status: string; url: string; error?: string };
+  };
+  timestamp: string;
+}
+```
+
+### 2.2 Create Management API Client
 
 Create `src/lib/api/management.ts`:
 
 ```typescript
 // src/lib/api/management.ts
-import { fetchApi } from './client'
+// Uses the existing api client pattern with retry logic
 
-const STAGES_API = process.env.NEXT_PUBLIC_STAGES_API_URL || 'http://localhost:8080'
+import { api } from './client';
+import type {
+  InspectDatabasesResponse,
+  OperationStatus,
+  CopyCollectionParams,
+  CopyCollectionResponse,
+  CleanGraphRAGParams,
+  CleanGraphRAGResponse,
+  CleanStageStatusParams,
+  CleanStageStatusResponse,
+  SetupTestDBParams,
+  SetupTestDBResponse,
+  RebuildIndexesParams,
+  RebuildIndexesResponse,
+  HealthStatus,
+} from '@/types/management';
 
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface DatabaseInfo {
-  name: string
-  collections: Array<{
-    name: string
-    count: number
-  }>
-}
-
-export interface InspectDatabasesResponse {
-  databases: DatabaseInfo[]
-  timestamp: string
-}
-
-export interface OperationProgress {
-  processed: number
-  total: number
-  percent: number
-}
-
-export interface OperationStatus {
-  operation_id: string
-  type: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  progress: OperationProgress
-  started_at: string
-  completed_at?: string
-  error?: string
-  params: Record<string, unknown>
-}
-
-export interface CopyCollectionParams {
-  source_db: string
-  target_db: string
-  collection: string
-  max_documents?: number | null
-  clear_target?: boolean
-}
-
-export interface CopyCollectionResponse {
-  operation_id: string
-  status: string
-  documents_copied?: number
-  message?: string
-}
-
-export interface CleanGraphRAGParams {
-  db_name: string
-  drop_collections?: string[]
-  clear_chunk_metadata?: boolean
-}
-
-export interface CleanGraphRAGResponse {
-  db_name: string
-  dropped_collections: Array<{
-    name: string
-    documents_deleted: number
-  }>
-  chunks_updated: number
-  success: boolean
-  timestamp: string
-}
-
-export interface CleanStageStatusParams {
-  db_name: string
-  stages: string[]
-}
-
-export interface CleanStageStatusResponse {
-  db_name: string
-  stages_cleaned: string[]
-  chunks_modified: number
-  success: boolean
-  timestamp: string
-}
-
-export interface SetupTestDBParams {
-  source_db: string
-  target_db: string
-  chunk_count?: number
-  diversity_mode?: boolean
-}
-
-export interface SetupTestDBResponse {
-  source_db: string
-  target_db: string
-  chunks_selected: number
-  unique_videos: number
-  diversity_mode: boolean
-  success: boolean
-  timestamp: string
-}
-
-export interface RebuildIndexesParams {
-  db_name: string
-  collections?: string[]
-}
-
-export interface RebuildIndexesResponse {
-  db_name: string
-  collections_indexed: Array<{
-    name: string
-    indexes_created: string[]
-  }>
-  success: boolean
-  timestamp: string
-}
-
-export interface HealthStatus {
-  overall: 'healthy' | 'degraded' | 'down' | 'unknown'
-  services: {
-    prometheus: { status: string; url: string; error?: string }
-    grafana: { status: string; url: string; error?: string }
-    loki: { status: string; url: string; error?: string }
-  }
-  timestamp: string
-}
-
-// =============================================================================
-// API Functions
-// =============================================================================
+// Re-export types for convenience
+export type {
+  DatabaseInfo,
+  InspectDatabasesResponse,
+  OperationProgress,
+  OperationStatus,
+  CopyCollectionParams,
+  CopyCollectionResponse,
+  CleanGraphRAGParams,
+  CleanGraphRAGResponse,
+  CleanStageStatusParams,
+  CleanStageStatusResponse,
+  SetupTestDBParams,
+  SetupTestDBResponse,
+  RebuildIndexesParams,
+  RebuildIndexesResponse,
+  HealthStatus,
+} from '@/types/management';
 
 /**
- * Inspect all databases and their collections
+ * Management API client
+ * Uses the existing api client with retry logic
  */
-export async function inspectDatabases(): Promise<InspectDatabasesResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/inspect-databases`)
-  if (!response.ok) {
-    throw new Error(`Failed to inspect databases: ${response.statusText}`)
-  }
-  return response.json()
-}
+export const managementApi = {
+  /** Inspect all databases and their collections */
+  inspectDatabases: () =>
+    api.get<InspectDatabasesResponse>('/management/inspect-databases'),
 
-/**
- * Get status of a long-running operation
- */
-export async function getOperationStatus(operationId: string): Promise<OperationStatus> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/operations/${operationId}`)
-  if (!response.ok) {
-    throw new Error(`Failed to get operation status: ${response.statusText}`)
-  }
-  return response.json()
-}
+  /** Get status of a long-running operation */
+  getOperationStatus: (operationId: string) =>
+    api.get<OperationStatus>(`/management/operations/${operationId}`),
 
-/**
- * Copy a collection from one database to another
- */
-export async function copyCollection(params: CopyCollectionParams): Promise<CopyCollectionResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/copy-collection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(error.error || 'Failed to copy collection')
-  }
-  return response.json()
-}
+  /** Copy a collection from one database to another */
+  copyCollection: (params: CopyCollectionParams) =>
+    api.post<CopyCollectionResponse>('/management/copy-collection', params),
 
-/**
- * Clean GraphRAG data from a database
- */
-export async function cleanGraphRAGData(params: CleanGraphRAGParams): Promise<CleanGraphRAGResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/clean-graphrag`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(error.error || 'Failed to clean GraphRAG data')
-  }
-  return response.json()
-}
+  /** Clean GraphRAG data from a database */
+  cleanGraphRAGData: (params: CleanGraphRAGParams) =>
+    api.post<CleanGraphRAGResponse>('/management/clean-graphrag', params),
 
-/**
- * Clean stage processing status from chunks
- */
-export async function cleanStageStatus(params: CleanStageStatusParams): Promise<CleanStageStatusResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/clean-stage-status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(error.error || 'Failed to clean stage status')
-  }
-  return response.json()
-}
+  /** Clean stage processing status from chunks */
+  cleanStageStatus: (params: CleanStageStatusParams) =>
+    api.post<CleanStageStatusResponse>('/management/clean-stage-status', params),
 
-/**
- * Setup a test database with diverse chunks
- */
-export async function setupTestDatabase(params: SetupTestDBParams): Promise<SetupTestDBResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/setup-test-db`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(error.error || 'Failed to setup test database')
-  }
-  return response.json()
-}
+  /** Setup a test database with diverse chunks */
+  setupTestDatabase: (params: SetupTestDBParams) =>
+    api.post<SetupTestDBResponse>('/management/setup-test-db', params),
 
-/**
- * Rebuild indexes for collections
- */
-export async function rebuildIndexes(params: RebuildIndexesParams): Promise<RebuildIndexesResponse> {
-  const response = await fetch(`${STAGES_API}/api/v1/management/rebuild-indexes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(error.error || 'Failed to rebuild indexes')
-  }
-  return response.json()
-}
+  /** Rebuild indexes for collections */
+  rebuildIndexes: (params: RebuildIndexesParams) =>
+    api.post<RebuildIndexesResponse>('/management/rebuild-indexes', params),
 
-/**
- * Get observability health status
- */
-export async function getObservabilityHealth(): Promise<HealthStatus> {
-  const response = await fetch(`${STAGES_API}/api/v1/observability/health`)
-  if (!response.ok) {
-    throw new Error(`Failed to get health status: ${response.statusText}`)
-  }
-  return response.json()
-}
+  /** Get observability health status */
+  getObservabilityHealth: () =>
+    api.get<HealthStatus>('/observability/health'),
+};
+
+// Export individual functions for backwards compatibility with hooks
+export const inspectDatabases = managementApi.inspectDatabases;
+export const getOperationStatus = managementApi.getOperationStatus;
+export const copyCollection = managementApi.copyCollection;
+export const cleanGraphRAGData = managementApi.cleanGraphRAGData;
+export const cleanStageStatus = managementApi.cleanStageStatus;
+export const setupTestDatabase = managementApi.setupTestDatabase;
+export const rebuildIndexes = managementApi.rebuildIndexes;
+export const getObservabilityHealth = managementApi.getObservabilityHealth;
 ```
+
+**Note**: This uses the existing `api` client from `./client.ts` which already includes:
+- Retry logic with exponential backoff
+- Proper error handling via `ApiError`
+- The base URL from `NEXT_PUBLIC_API_URL` (includes `/api/v1`)
 
 ---
 
 ## Phase 3: React Query Hooks (1 hour)
 
-### 3.1 Create Management Hooks
+### 3.1 Create Centralized Query Keys
+
+Create `src/lib/query-keys.ts`:
+
+```typescript
+// src/lib/query-keys.ts
+// Centralized query keys for React Query
+// Prevents typos and enables easy invalidation patterns
+
+export const queryKeys = {
+  // Pipeline execution
+  pipeline: {
+    all: ['pipeline'] as const,
+    status: (id: string) => ['pipeline', 'status', id] as const,
+    history: ['pipeline', 'history'] as const,
+  },
+
+  // Configuration
+  config: {
+    all: ['config'] as const,
+    defaults: ['config', 'defaults'] as const,
+    stage: (stage: string) => ['config', 'stage', stage] as const,
+    validation: ['config', 'validation'] as const,
+  },
+
+  // Management module (new)
+  management: {
+    all: ['management'] as const,
+    databases: ['management', 'databases'] as const,
+    operation: (id: string) => ['management', 'operation', id] as const,
+    health: ['management', 'health'] as const,
+  },
+
+  // Graph API / Analytics
+  graph: {
+    all: ['graph'] as const,
+    statistics: (dbName: string) => ['graph', 'statistics', dbName] as const,
+  },
+
+  // Observability
+  observability: {
+    all: ['observability'] as const,
+    health: ['observability', 'health'] as const,
+    metrics: ['observability', 'metrics'] as const,
+  },
+} as const;
+```
+
+### 3.2 Create Management Hooks
 
 Create `src/hooks/use-management.ts`:
 
@@ -483,13 +506,16 @@ import {
   setupTestDatabase,
   rebuildIndexes,
   getObservabilityHealth,
-  type CopyCollectionParams,
-  type CleanGraphRAGParams,
-  type CleanStageStatusParams,
-  type SetupTestDBParams,
-  type RebuildIndexesParams,
-  type OperationStatus,
 } from '@/lib/api/management'
+import type {
+  CopyCollectionParams,
+  CleanGraphRAGParams,
+  CleanStageStatusParams,
+  SetupTestDBParams,
+  RebuildIndexesParams,
+  OperationStatus,
+} from '@/types/management'
+import { queryKeys } from '@/lib/query-keys'
 
 // =============================================================================
 // Query Hooks
@@ -500,7 +526,7 @@ import {
  */
 export function useDatabaseInspector() {
   return useQuery({
-    queryKey: ['management', 'databases'],
+    queryKey: queryKeys.management.databases,
     queryFn: inspectDatabases,
     refetchInterval: 30000, // Refresh every 30 seconds
     staleTime: 10000,
@@ -512,7 +538,7 @@ export function useDatabaseInspector() {
  */
 export function useOperationStatus(operationId: string | null) {
   return useQuery({
-    queryKey: ['management', 'operation', operationId],
+    queryKey: queryKeys.management.operation(operationId || ''),
     queryFn: () => getOperationStatus(operationId!),
     enabled: !!operationId,
     refetchInterval: (query) => {
@@ -531,7 +557,7 @@ export function useOperationStatus(operationId: string | null) {
  */
 export function useObservabilityHealth() {
   return useQuery({
-    queryKey: ['management', 'health'],
+    queryKey: queryKeys.management.health,
     queryFn: getObservabilityHealth,
     refetchInterval: 15000, // Refresh every 15 seconds
     staleTime: 5000,
@@ -552,7 +578,7 @@ export function useCopyCollection() {
     mutationFn: (params: CopyCollectionParams) => copyCollection(params),
     onSuccess: () => {
       // Invalidate database inspection to show new data
-      queryClient.invalidateQueries({ queryKey: ['management', 'databases'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.management.databases })
     },
   })
 }
@@ -566,7 +592,7 @@ export function useCleanGraphRAG() {
   return useMutation({
     mutationFn: (params: CleanGraphRAGParams) => cleanGraphRAGData(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['management', 'databases'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.management.databases })
     },
   })
 }
@@ -580,7 +606,7 @@ export function useCleanStageStatus() {
   return useMutation({
     mutationFn: (params: CleanStageStatusParams) => cleanStageStatus(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['management', 'databases'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.management.databases })
     },
   })
 }
@@ -594,7 +620,7 @@ export function useSetupTestDB() {
   return useMutation({
     mutationFn: (params: SetupTestDBParams) => setupTestDatabase(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['management', 'databases'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.management.databases })
     },
   })
 }
@@ -1115,7 +1141,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { Wrench, ChevronDown, RefreshCw, Eraser } from 'lucide-react'
 import { useDatabaseInspector, useCleanStageStatus, useRebuildIndexes } from '@/hooks/use-management'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 
 export function MaintenancePanel() {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -1464,8 +1490,9 @@ Create `src/lib/store/management-store.ts`:
 
 ```typescript
 // src/lib/store/management-store.ts
+// Uses devtools(persist(...)) pattern consistent with other stores
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
 
 interface ManagementState {
   // Selected database (persisted)
@@ -1484,50 +1511,60 @@ interface ManagementState {
 }
 
 export const useManagementStore = create<ManagementState>()(
-  persist(
-    (set) => ({
-      selectedDatabase: null,
-      setSelectedDatabase: (db) => set({ selectedDatabase: db }),
-      
-      activeOperationIds: [],
-      addActiveOperation: (id) => set((state) => ({
-        activeOperationIds: [...state.activeOperationIds, id]
-      })),
-      removeActiveOperation: (id) => set((state) => ({
-        activeOperationIds: state.activeOperationIds.filter(opId => opId !== id)
-      })),
-      
-      lastSourceDb: '',
-      lastTargetDb: '',
-      setLastDbs: (source, target) => set({ lastSourceDb: source, lastTargetDb: target }),
-    }),
-    {
-      name: 'stages-management-store',
-      partialize: (state) => ({
-        selectedDatabase: state.selectedDatabase,
-        lastSourceDb: state.lastSourceDb,
-        lastTargetDb: state.lastTargetDb,
+  devtools(
+    persist(
+      (set) => ({
+        selectedDatabase: null,
+        setSelectedDatabase: (db) => set({ selectedDatabase: db }),
+        
+        activeOperationIds: [],
+        addActiveOperation: (id) => set((state) => ({
+          activeOperationIds: [...state.activeOperationIds, id]
+        })),
+        removeActiveOperation: (id) => set((state) => ({
+          activeOperationIds: state.activeOperationIds.filter(opId => opId !== id)
+        })),
+        
+        lastSourceDb: '',
+        lastTargetDb: '',
+        setLastDbs: (source, target) => set({ lastSourceDb: source, lastTargetDb: target }),
       }),
-    }
+      {
+        name: 'stages-management-store',
+        partialize: (state) => ({
+          selectedDatabase: state.selectedDatabase,
+          lastSourceDb: state.lastSourceDb,
+          lastTargetDb: state.lastTargetDb,
+          // Consider persisting activeOperationIds to recover on page refresh
+          // activeOperationIds: state.activeOperationIds,
+        }),
+      }
+    ),
+    { name: 'management-store' }
   )
 )
 ```
+
+**Note**: Consider persisting `activeOperationIds` and implementing recovery logic on page load for long-running operations that survive page refreshes.
 
 ---
 
 ## Implementation Checklist
 
 ### Phase 1: Routes (1-2 hours)
-- [ ] Add navigation to `src/app/layout.tsx`
+- [ ] Create `src/components/layout/nav-link.tsx` client component
+- [ ] Add navigation to `src/app/layout.tsx` (import NavLink)
 - [ ] Move current page to `src/app/execution/page.tsx`
 - [ ] Update `src/app/page.tsx` with redirect
 - [ ] Create `src/app/management/page.tsx` with grid layout
 
 ### Phase 2: API Client (1 hour)
-- [ ] Create `src/lib/api/management.ts` with all types and functions
+- [ ] Create `src/types/management.ts` with type definitions
+- [ ] Create `src/lib/api/management.ts` using existing `api` client
 - [ ] Test API calls work with backend
 
 ### Phase 3: Hooks (1 hour)
+- [ ] Create `src/lib/query-keys.ts` with centralized query keys
 - [ ] Create `src/hooks/use-management.ts` with React Query hooks
 - [ ] Test database inspection hook
 - [ ] Test operation polling hook
@@ -1618,7 +1655,10 @@ export const useManagementStore = create<ManagementState>()(
 | `src/app/layout.tsx` | +30 | Navigation additions |
 | `src/app/execution/page.tsx` | ~200 | Moved from page.tsx |
 | `src/app/management/page.tsx` | ~60 | Management layout |
-| `src/lib/api/management.ts` | ~200 | API client |
+| `src/components/layout/nav-link.tsx` | ~25 | Client nav component |
+| `src/types/management.ts` | ~100 | Type definitions |
+| `src/lib/api/management.ts` | ~80 | API client |
+| `src/lib/query-keys.ts` | ~35 | Query keys |
 | `src/hooks/use-management.ts` | ~100 | React Query hooks |
 | `src/lib/store/management-store.ts` | ~50 | Zustand store |
 | `src/components/management/database-operations.tsx` | ~300 | Database ops panel |
