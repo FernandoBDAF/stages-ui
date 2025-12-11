@@ -17,6 +17,19 @@ export const queryKeys = {
     health: () => [...queryKeys.management.all, 'health'] as const,
   },
 
+  // Viewer-related queries
+  viewer: {
+    all: ['viewer'] as const,
+    databases: () => [...queryKeys.viewer.all, 'databases'] as const,
+    collections: (dbName: string) => [...queryKeys.viewer.all, 'collections', dbName] as const,
+    document: (dbName: string, collectionName: string, documentId: string) => 
+      [...queryKeys.viewer.all, 'document', dbName, collectionName, documentId] as const,
+    query: (dbName: string, collectionName: string) => 
+      [...queryKeys.viewer.all, 'query', dbName, collectionName] as const,
+    schema: (dbName: string, collectionName: string) => 
+      [...queryKeys.viewer.all, 'schema', dbName, collectionName] as const,
+  },
+
   // Graph statistics
   graphStatistics: (dbName: string) => ['graph-statistics', dbName] as const,
 };
