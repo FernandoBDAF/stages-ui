@@ -54,5 +54,16 @@ export const api = {
       body: JSON.stringify(data),
       ...options,
     }),
+  put: <T>(endpoint: string, data: unknown, options?: { retry?: boolean }) =>
+    fetchApi<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      ...options,
+    }),
+  delete: <T>(endpoint: string, options?: { retry?: boolean }) =>
+    fetchApi<T>(endpoint, {
+      method: 'DELETE',
+      ...options,
+    }),
 };
 

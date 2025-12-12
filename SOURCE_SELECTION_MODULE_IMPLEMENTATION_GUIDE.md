@@ -2457,13 +2457,17 @@ export default function ExecutionPage() {
 
 Add source selection metadata to the execute function. Find the `execute` function and modify the API call:
 
+> **Important**: Use `useSourceSelectionStore` as a React hook (not `.getState()`) to maintain proper React subscription model and ensure re-renders when source selection changes.
+
 ```typescript
 // In the execute function, before calling the API:
 
 import { useSourceSelectionStore } from '@/lib/store/source-selection-store';
 
-// Inside the hook:
-const { getExecutionMetadata } = useSourceSelectionStore.getState();
+// Inside the hook - subscribe to the selector function:
+const getExecutionMetadata = useSourceSelectionStore(
+  (state) => state.getExecutionMetadata
+);
 
 // In the execute function:
 const execute = async () => {

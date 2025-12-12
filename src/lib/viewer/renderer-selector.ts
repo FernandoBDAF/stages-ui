@@ -20,6 +20,15 @@ const COLLECTION_AVAILABLE_RENDERERS: Record<string, RendererType[]> = {
 // Default renderers for unknown collections
 const DEFAULT_RENDERERS: RendererType[] = ['json', 'table', 'long_text'];
 
+// Source field mapping for timeline (matches backend TRACKED_COLLECTIONS)
+const COLLECTION_SOURCE_FIELDS: Record<string, string> = {
+  video_chunks: 'video_id',
+  cleaned_transcripts: 'video_id',
+  enriched_transcripts: 'video_id',
+  entities: 'video_id',
+  communities: 'video_id',
+};
+
 /**
  * Select appropriate renderer based on collection name
  */
@@ -74,4 +83,12 @@ export function rendererSupportsSearch(renderer: RendererType): boolean {
  */
 export function rendererSupportsEntityHighlight(renderer: RendererType): boolean {
   return renderer === 'long_text' || renderer === 'chunks';
+}
+
+/**
+ * Get the source field for timeline queries
+ * Returns the field that groups related documents (e.g., video_id for video_chunks)
+ */
+export function getSourceField(collectionName: string): string | undefined {
+  return COLLECTION_SOURCE_FIELDS[collectionName];
 }

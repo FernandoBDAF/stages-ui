@@ -28,7 +28,7 @@ export interface ConfigField {
   optional: boolean;
   description: string;
   category: string;
-  ui_type: 'text' | 'number' | 'slider' | 'checkbox' | 'select' | 'multiselect';
+  ui_type: 'text' | 'number' | 'slider' | 'checkbox' | 'select' | 'multiselect' | 'prompt_selector';
   is_inherited: boolean;
   min?: number;
   max?: number;

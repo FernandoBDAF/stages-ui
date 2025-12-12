@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { usePipelineStore } from '@/lib/store/pipeline-store';
 import { useConfigStore } from '@/lib/store/config-store';
 import { useExecutionStore } from '@/lib/store/execution-store';
+import { useSourceSelectionStore } from '@/lib/store/source-selection-store';
 import { pipelinesApi } from '@/lib/api/pipelines';
 import { ApiError } from '@/lib/api/client';
 
 export function usePipelineExecution() {
   const { selectedPipeline, selectedStages } = usePipelineStore();
-  const { configs } = useConfigStore();
+  const { configs, globalConfig } = useConfigStore();
   const {
     setValidationResult,
     setValidationLoading,
@@ -16,6 +17,11 @@ export function usePipelineExecution() {
     setExecutionLoading,
     addError,
   } = useExecutionStore();
+  
+  // Subscribe to source selection metadata getter
+  const getExecutionMetadata = useSourceSelectionStore(
+    (state) => state.getExecutionMetadata
+  );
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -51,10 +57,27 @@ export function usePipelineExecution() {
         Object.entries(configs).filter(([stageName]) => selectedStages.includes(stageName))
       );
       
+      // Merge global config into each stage config
+      // Global values serve as defaults, stage-specific values override
+      const mergedConfigs = Object.fromEntries(
+        Object.entries(filteredConfigs).map(([stageName, stageConfig]) => [
+          stageName,
+          {
+            // Global values as defaults (only include if defined)
+            ...(globalConfig.db_name !== undefined && { db_name: globalConfig.db_name }),
+            ...(globalConfig.concurrency !== undefined && { concurrency: globalConfig.concurrency }),
+            ...(globalConfig.verbose !== undefined && { verbose: globalConfig.verbose }),
+            ...(globalConfig.dry_run !== undefined && { dry_run: globalConfig.dry_run }),
+            // Stage-specific overrides take precedence
+            ...stageConfig,
+          }
+        ])
+      );
+      
       const result = await pipelinesApi.validate(
         selectedPipeline,
         selectedStages,
-        filteredConfigs
+        mergedConfigs
       );
       setValidationResult(result);
     } catch (error) {
@@ -62,7 +85,7 @@ export function usePipelineExecution() {
     } finally {
       setValidationLoading(false);
     }
-  }, [selectedPipeline, selectedStages, configs, setValidationLoading, setValidationResult, addError]);
+  }, [selectedPipeline, selectedStages, configs, globalConfig, setValidationLoading, setValidationResult, addError]);
 
   const startPolling = useCallback((pipelineId: string) => {
     // Clear existing polling
@@ -179,11 +202,34 @@ export function usePipelineExecution() {
         Object.entries(configs).filter(([stageName]) => selectedStages.includes(stageName))
       );
       
+      // Merge global config into each stage config
+      // Global values serve as defaults, stage-specific values override
+      const mergedConfigs = Object.fromEntries(
+        Object.entries(filteredConfigs).map(([stageName, stageConfig]) => [
+          stageName,
+          {
+            // Global values as defaults (only include if defined)
+            ...(globalConfig.db_name !== undefined && { db_name: globalConfig.db_name }),
+            ...(globalConfig.concurrency !== undefined && { concurrency: globalConfig.concurrency }),
+            ...(globalConfig.verbose !== undefined && { verbose: globalConfig.verbose }),
+            ...(globalConfig.dry_run !== undefined && { dry_run: globalConfig.dry_run }),
+            // Stage-specific overrides take precedence
+            ...stageConfig,
+          }
+        ])
+      );
+      
+      // Get source selection metadata (filter info)
+      const sourceMetadata = getExecutionMetadata();
+      
       const result = await pipelinesApi.execute(
         selectedPipeline,
         selectedStages,
-        filteredConfigs,
-        { experiment_id: `exp_${Date.now()}` }
+        mergedConfigs,
+        { 
+          experiment_id: `exp_${Date.now()}`,
+          ...sourceMetadata, // Include filter info
+        }
       );
 
       if (result.error) {
@@ -198,7 +244,7 @@ export function usePipelineExecution() {
     } finally {
       setExecutionLoading(false);
     }
-  }, [selectedPipeline, selectedStages, configs, setExecutionLoading, setPipelineId, setPipelineStatus, startPolling, addError]);
+  }, [selectedPipeline, selectedStages, configs, globalConfig, setExecutionLoading, setPipelineId, setPipelineStatus, startPolling, addError, getExecutionMetadata]);
 
   const cancel = useCallback(async () => {
     const pipelineId = useExecutionStore.getState().currentPipelineId;

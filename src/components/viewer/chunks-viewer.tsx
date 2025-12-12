@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { ChunkItemsSkeleton } from './skeleton-loaders';
 import { cn } from '@/lib/utils';
 import { TextDisplay } from './text-display';
 import { useViewerSettings } from '@/hooks/use-viewer-settings';
+import { Button } from '@/components/ui/button';
 import type { ChunkDocument } from '@/types/viewer-api';
 
 interface ChunksViewerProps {
@@ -83,9 +85,7 @@ export function ChunksViewer({
         
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="w-6 h-6 border-2 border-neutral-300 border-t-neutral-600 rounded-full animate-spin" />
-            </div>
+            <ChunkItemsSkeleton />
           ) : documents.length === 0 ? (
             <div className="p-4 text-sm text-neutral-500 text-center">
               No chunks found
@@ -93,21 +93,34 @@ export function ChunksViewer({
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {documents.map((chunk) => (
-                <button
+                <div
                   key={chunk._id}
-                  onClick={() => handleSelect(chunk)}
-                  onDoubleClick={() => onDocumentClick(chunk._id)}
                   className={cn(
-                    'w-full p-4 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors',
+                    'p-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer',
                     selectedChunk?._id === chunk._id && 'bg-blue-50 dark:bg-blue-900/20'
                   )}
+                  onClick={() => handleSelect(chunk)}
                 >
-                  {/* Chunk header */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="w-4 h-4 text-neutral-400" />
-                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      {chunk.video_id || 'Unknown'} #{chunk.chunk_index ?? '?'}
-                    </span>
+                  {/* Chunk header with Open button */}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <FileText className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                        {chunk.video_id || 'Unknown'} #{chunk.chunk_index ?? '?'}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs flex-shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDocumentClick(chunk._id);
+                      }}
+                    >
+                      Open
+                      <ExternalLink className="w-3 h-3 ml-1" />
+                    </Button>
                   </div>
 
                   {/* Stage status badges */}
@@ -138,7 +151,7 @@ export function ChunksViewer({
                       {chunk.text.slice(0, 150)}...
                     </p>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -210,7 +223,7 @@ export function ChunksViewer({
           <div className="flex items-center justify-center h-full text-neutral-500">
             <div className="text-center">
               <p>Select a chunk to view its content</p>
-              <p className="text-xs mt-1 text-neutral-400">Double-click to open full view</p>
+              <p className="text-xs mt-1 text-neutral-400">Click &quot;Open&quot; to view full details</p>
             </div>
           </div>
         )}

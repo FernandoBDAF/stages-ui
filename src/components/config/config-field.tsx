@@ -7,6 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useConfigStore } from '@/lib/store/config-store';
+import { PromptSelectorField } from './prompt-selector-field';
 import type { ConfigField as ConfigFieldType } from '@/types/api';
 
 interface ConfigFieldProps {
@@ -107,6 +108,15 @@ export function ConfigField({ field, stageName, value }: ConfigFieldProps) {
             max={field.max}
             step={field.step}
             placeholder={field.placeholder}
+          />
+        );
+
+      case 'prompt_selector':
+        return (
+          <PromptSelectorField
+            stageName={stageName}
+            value={value as string | null | undefined}
+            onChange={handleChange}
           />
         );
 
